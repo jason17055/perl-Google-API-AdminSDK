@@ -241,6 +241,28 @@ sub _parse_response
 	return $resp_obj;
 }
 
+=head2 delete_user()
+
+ $google->delete_user('joe@example.com');
+
+Deletes a user.
+
+=cut
+
+sub delete_user
+{
+	my $self = shift;
+	my ($user_key) = @_;
+
+	my $url = 'https://www.googleapis.com/admin/directory/v1/users/'.uri_escape($user_key);
+	my $req = HTTP::Request->new("DELETE", $url);
+	my $resp = $self->request_raw($req);
+	$resp->is_success
+		or die "Error: ".$resp->status_line."\n";
+
+	return;
+}
+
 =head2 get_user()
 
  my $user_info = $google->get_user(userKey => 'joe@example.com')
