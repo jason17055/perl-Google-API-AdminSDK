@@ -26,6 +26,39 @@ Google::API::AdminSDK - client library for Google's Admin SDK
         userKey => 'user1@example.com',
         );
 
+=head1 GETTING STARTED
+
+To use this API you will need to register your application with Google.
+Go to the Google Developers Console. Set up a new project there and
+under the APIs heading enable the "Admin SDK" API. Then under the
+Credentials heading, create a new Client ID of the "Installed application"
+type. After doing this you will have a CLIENT ID and a CLIENT SECRET.
+These strings should be hardcoded into your Perl program and used when
+you construct the Google::API::AdminSDK object.
+
+Authentication and authorization to the Google API is done through
+tokens. Normally tokens are short-lived (one hour), which may be fine
+for some use cases, but for automated tasks you probably want something
+that is permanent. That is what a "refresh token" is for.
+
+Write the following into a Perl script, substituting your application's
+ID and secret in the appropriate places. Then run the script in a Linux
+terminal window and follow the instructions.
+
+ use Google::API::AdminSDK;
+ Google::API::AdminSDK->new(
+        ClientId => '123456789-1a2b3c4d5e.apps.googleusercontent.com',
+        ClientSecret => 'XYZsecret123',
+        )
+        ->interactively_acquire_refresh_token;
+
+On success, the script will output a "Refresh Token" that you can put
+in your application's configuration file. Your application should read
+its configuration file and use the refresh token when instantiating
+the Google::API::AdminSDK object. This refresh token will not
+expire (although it can be revoked by the Google Apps user that created it)
+and will give your application access to the Directory API.
+
 =head1 CONSTRUCTOR
 
 =head2 new()
@@ -38,13 +71,15 @@ Google::API::AdminSDK - client library for Google's Admin SDK
 
 Constructs a new API object. ClientId and ClientSecret are unique to
 your app and are issued to you by Google through the
-Google Developers Console (you must find the "Create new Client ID"
-function, and select "Installed application" as the application type).
+Google Developers Console (see the GETTING STARTED section above).
 These strings simply identify your application to Google and are not
-associated with authorization.
+associated with authorization. It is expected that these strings would
+be hardcoded into your application.
 
 RefreshToken is a string that gives you access to a specific Google Apps
-account or domain. See the AUTHORIZATION section below for more information.
+account or domain (see the GETTING STARTED section above for
+more information). It is expected that this string would be stored in
+a configuration file.
 
 =cut
 
@@ -250,27 +285,6 @@ sub interactively_acquire_refresh_token
 	print "Here is your refresh token:\n";
 	print "$refresh_token\n";
 }
-
-=head1 AUTHORIZATION
-
-Authentication and authorization to the Google API is done through
-tokens. Normally tokens are short-lived (one hour), which may be fine
-for some use cases, but for automated tasks you probably want something
-that is permanent. That is what a "refresh token" is for.
-
-Write the following into a Perl script, substituting your application's
-ID and secret in the appropriate places. Then run the script in a Linux
-terminal window and follow the instructions. The result will be a
-"Refresh Token" that you can put in your application's configuration file
-and use whenever your application instantiates the Google::API::AdminSDK
-object.
-
- use Google::API::AdminSDK;
- Google::API::AdminSDK->new(
-        ClientId => '123456789-1a2b3c4d5e.apps.googleusercontent.com',
-        ClientSecret => 'XYZsecret123',
-        )
-        ->interactively_acquire_refresh_token;
 
 =head1 COPYRIGHT
 
