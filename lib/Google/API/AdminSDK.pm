@@ -4,6 +4,7 @@ use warnings;
 use LWP::UserAgent;
 use URI::Escape;
 use JSON "decode_json", "encode_json";
+use IO::Handle;
 
 our $VERSION = 0.001;
 
@@ -226,6 +227,15 @@ sub request_raw
 		$resp = $self->http->request($req);
 	}
 
+	if (my $fh = $self->{DebugTo}) {
+		print $fh ">>>\n";
+		print $fh $req->as_string;
+		print $fh "<<<\n";
+		print $fh $resp->as_string;
+		print $fh "\n";
+		$fh->flush;
+	}
+
 	return $resp;
 }
 
@@ -374,7 +384,6 @@ sub interactively_acquire_refresh_token
 	my $self = shift;
 
 	use URI::Escape;
-	use IO::Handle;
 
 	my $redirect_uri='urn:ietf:wg:oauth:2.0:oob';
 	my @scopes = qw(
