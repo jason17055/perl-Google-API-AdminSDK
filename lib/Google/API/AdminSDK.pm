@@ -22,9 +22,7 @@ Google::API::AdminSDK - client library for Google's Admin SDK
         RefreshToken => $token_string,
         );
 
- my $user_data = $google->get_user(
-        userKey => 'user1@example.com',
-        );
+ my $user_data = $google->get_user('joe@example.com');
 
 =head1 GETTING STARTED
 
@@ -265,8 +263,11 @@ sub delete_user
 
 =head2 get_user()
 
- my $user_info = $google->get_user(userKey => 'joe@example.com')
+ my $user_info = $google->get_user('joe@example.com')
        or die "User not found\n";
+
+The user identifier can be the user's primary email address, any alias email address,
+or the unique user ID.
 
 If the user exists, returns a L<User Resource> for the given user.
 If the user does not exist, returns undef.
@@ -276,9 +277,9 @@ If the user does not exist, returns undef.
 sub get_user
 {
 	my $self = shift;
-	my %args = @_;
+	my ($user_key) = @_;
 
-	my $url = 'https://www.googleapis.com/admin/directory/v1/users/'.uri_escape($args{userKey});
+	my $url = 'https://www.googleapis.com/admin/directory/v1/users/'.uri_escape($user_key);
 	my $req = HTTP::Request->new("GET", $url);
 	my $resp = $self->request_raw($req);
 	if ($resp->code == 404) {
