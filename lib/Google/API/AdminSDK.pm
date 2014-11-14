@@ -267,6 +267,44 @@ sub get_user
 	return _parse_response($resp);
 }
 
+=head2 insert_user()
+
+ $google->insert_user($user);
+
+$user is a L<User Resource> containing at least the minimally-required attributes
+describing the user. An error is thrown if for any reason the user could not be
+created.
+
+The following keys of $user are required:
+
+=over
+
+=item $user->{name}->{familyName} the user's last name.
+
+=item $user->{name}->{givenName} the user's first name
+
+=item $user->{password} stores the password for the user account.
+
+=item $user->{primaryEmail} the user's primary email address.
+
+=back
+
+=cut
+
+sub insert_user
+{
+	my $self = shift;
+	my ($user_obj) = @_;
+
+	my $url = 'https://www.googleapis.com/admin/directory/v1/users';
+	my $req = HTTP::Request->new('POST', $url);
+	my $content = encode_json($user_obj);
+	$req->header('Content-Type', 'application/json');
+	$req->content($content);
+
+	return $self->request($req);
+}
+
 =head2 list_users()
 
  my $users_data = $google->list_users(domain => 'example.com');
