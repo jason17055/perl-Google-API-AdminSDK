@@ -1,0 +1,6 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/Google-API-AdminSDK.t
+lib/Google/API/AdminSDK.pm

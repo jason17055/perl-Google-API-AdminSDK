@@ -1,0 +1,33 @@
+Google-API-AdminSDK version 0.01
+================================
+
+This module implements the Google "Admin SDK", used for managing users,
+groups, devices, and apps in Google Apps. More information about the
+Admin SDK can be found here-
+
+https://developers.google.com/admin-sdk/
+
+INSTALLATION
+
+To install this module type the following:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+DEPENDENCIES
+
+This module requires these other modules and libraries:
+
+  libwww-perl (LWP)
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 2014 by Jason Long
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself, either Perl version 5.10.0 or,
+at your option, any later version of Perl 5 you may have available.
+
+
