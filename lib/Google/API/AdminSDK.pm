@@ -207,6 +207,15 @@ sub request
 	my $self = shift;
 	my ($req) = @_;
 
+	my $resp = $self->request_raw($req);
+	return _parse_response($resp);
+}
+
+sub request_raw
+{
+	my $self = shift;
+	my ($req) = @_;
+
 	my $access_token = $self->get_access_token();
 	$req->header("Authorization", "Bearer $access_token");
 
@@ -219,10 +228,43 @@ sub request
 		$resp = $self->http->request($req);
 	}
 
+	return $resp;
+}
+
+sub _parse_response
+{
+	my ($resp) = @_;
+
 	$resp->is_success
 		or die "Error: ".$resp->status_line."\n";
 	my $resp_obj = decode_json($resp->content);
 	return $resp_obj;
+}
+
+=head2 get_user()
+
+ my $user_info = $google->get_user(userKey => 'joe@example.com')
+       or die "User not found\n";
+
+If the user exists, returns a L<User Resource> for the given user.
+If the user does not exist, returns undef.
+
+=cut
+
+sub get_user
+{
+	my $self = shift;
+	my %args = @_;
+
+	my $url = 'https://www.googleapis.com/admin/directory/v1/users/'.uri_escape($args{userKey});
+	my $req = HTTP::Request->new("GET", $url);
+	my $resp = $self->request_raw($req);
+	if ($resp->code == 404) {
+		# user not found
+		return;
+	}
+
+	return _parse_response($resp);
 }
 
 =head2 list_users()
@@ -237,7 +279,7 @@ sub request
 sub list_users
 {
 	my $self = shift;
-	my (%args) = @_;
+	my %args = @_;
 
 	my $url = 'https://www.googleapis.com/admin/directory/v1/users?'
 		. join('&', map { "$_=".uri_escape($args{$_}) }
@@ -285,6 +327,30 @@ sub interactively_acquire_refresh_token
 	print "Here is your refresh token:\n";
 	print "$refresh_token\n";
 }
+
+=head1 DATA TYPES
+
+=head2 User Resource
+
+A User Resource is a plain-old Perl hash with the following keys:
+
+=over
+
+=item id - unique ID for the user (can be used as userKey when querying)
+
+=item primaryEmail - user's primary email address. Required.
+
+=item name - a hash with fields fullName, givenName, and familyName.
+
+=item isAdmin - boolean indicating a user with super administrator privileges.
+
+=item lastLoginTime - time string (ISO 8601 format) the last time the user logged in
+
+=item suspended - boolean indicating if the user is suspended.
+
+=back
+
+This list is not conclusive.
 
 =head1 COPYRIGHT
 
