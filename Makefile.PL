@@ -6,7 +6,7 @@ WriteMakefile(
 	NAME           => 'Google::API::AdminSDK',
 	VERSION_FROM   => 'lib/Google/API/AdminSDK.pm',
 	PREREQ_PM      => { # e.g., Module::Name => 1.1
-		LWP => 6.000,
+		LWP => 5.816,
 		},
 	ABSTRACT_FROM  => 'lib/Google/API/AdminSDK.pm',
 	AUTHOR         => 'Jason Long <jason@long.name>',
