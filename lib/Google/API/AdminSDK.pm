@@ -349,6 +349,26 @@ sub list_users
 	return $self->request($req);
 }
 
+=head2 patch_user()
+
+ $google->patch_user('joe@example.com', $user);
+
+=cut
+
+sub patch_user
+{
+	my $self = shift;
+	my ($user_key, $user_obj) = @_;
+
+	my $url = 'https://www.googleapis.com/admin/directory/v1/users/'.uri_escape($user_key);
+	my $req = HTTP::Request->new('PATCH', $url);
+	my $content = encode_json($user_obj);
+	$req->header('Content-Type', 'application/json');
+	$req->content($content);
+
+	return $self->request($req);
+}
+
 sub interactively_acquire_refresh_token
 {
 	my $self = shift;
