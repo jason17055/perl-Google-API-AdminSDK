@@ -1,3 +1,5 @@
+
+
 package Google::API::AdminSDK;
 use strict;
 use warnings;
@@ -212,28 +214,34 @@ sub request
 
 sub request_raw
 {
-	my $self = shift;
+	my $self  = shift;
 	my ($req) = @_;
+	my $tries = 0;
+	my $wait  = 1;
+	my $resp;
 
 	my $access_token = $self->get_access_token();
 	$req->header("Authorization", "Bearer $access_token");
 
-	my $resp = $self->http->request($req);
-	if ($resp->code == 401) {
-
-		undef $self->{access_token};
-		$access_token = $self->get_access_token();
-		$req->header("Authorization", "Bearer $access_token");
+	# Exponential backoff per Google spec 
+	while ($tries < 5) {
 		$resp = $self->http->request($req);
-	}
-
-	if (my $fh = $self->{DebugTo}) {
-		print $fh ">>>\n";
-		print $fh $req->as_string;
-		print $fh "<<<\n";
-		print $fh $resp->as_string;
-		print $fh "\n";
-		$fh->flush;
+		if ($resp->code == 401) {
+			undef $self->{access_token};
+			$access_token = $self->get_access_token();
+			$req->header("Authorization", "Bearer $access_token");
+			$resp = $self->http->request($req);
+			if ($resp->code == 200) {
+				last;
+			}
+		} elsif ($resp->code == 200) {
+			last;
+		} else {
+			$tries++;
+			my $sleep = $wait + rand();
+			select(undef,undef,undef,$sleep);
+			$wait = $wait + $wait;	
+		}
 	}
 
 	return $resp;
@@ -246,6 +254,7 @@ sub _parse_response
 	$resp->is_success
 		or die "Error: ".$resp->status_line."\n";
 	my $resp_obj = decode_json($resp->content);
+
 	return $resp_obj;
 }
 
@@ -351,12 +360,63 @@ sub list_users
 {
 	my $self = shift;
 	my %args = @_;
-
-	my $url = 'https://www.googleapis.com/admin/directory/v1/users?'
-		. join('&', map { "$_=".uri_escape($args{$_}) }
+        my @result;
+        my $url;
+        my $req;
+        my $response;
+	
+        my $next;
+	while (1) {
+		$url = 'https://www.googleapis.com/admin/directory/v1/users?'
+			. join('&', map { "$_=".uri_escape($args{$_}) }
 			grep defined($args{$_}), keys %args);
-	my $req = HTTP::Request->new("GET", $url);
-	return $self->request($req);
+                $url = "$url&maxResults=500";
+
+                if ($next) {
+			$url = "$url&pageToken=$next";
+                }
+
+		$req = HTTP::Request->new("GET", $url);
+
+		$response = $self->request($req);
+
+                if ($response->{'nextPageToken'}) {
+         		push(@result, @{$response->{'users'}});
+			$next = $response->{'nextPageToken'};
+                } else {
+         		push(@result, @{$response->{'users'}});
+			last;
+                }
+	}
+	return @result;
+}
+
+=head2 list_users_hash
+
+ my %user_data = $google_sdk->list_users_hash( domain => 'example.com',orderBy => 'email');
+ foreach my $uid (keys %user_data) {
+    print "($uid) $user_data{$uid}->{'id'} - $user_data{$uid}->{'suspended'}\n";
+ }
+
+=cut
+
+sub list_users_hash
+{
+        my $self = shift;
+        my %args = @_;
+	my %result;
+	
+	my @users_data = $self->list_users(@_);
+	foreach my $user_info (@users_data) {
+		my ($uid, $domain) = split('@',$user_info->{'primaryEmail'},2);
+		$result{$uid}->{'id'} = $user_info->{'id'}; 
+		$result{$uid}->{'email'} = $user_info->{'primaryEmail'}; 
+		$result{$uid}->{'givenName'} = $user_info->{'name'}->{'givenName'}; 
+		$result{$uid}->{'familyName'} = $user_info->{'name'}->{'familyName'}; 
+		$result{$uid}->{'suspended'} = $user_info->{'suspended'}; 
+	}
+
+	return (%result);
 }
 
 =head2 patch_user()
@@ -379,6 +439,50 @@ sub patch_user
 	return $self->request($req);
 }
 
+
+=head2 list_members()
+
+ my @members = $google->list_members('group@example.com');
+ foreach my $member (@members) {
+     # do something with $member 
+ }
+
+=cut
+
+sub list_members
+{
+        my $self  = shift;
+        my $group = $_[0];
+        my @result;
+        my $url;
+        my $req;
+        my $response;
+
+        my $next;
+        while (1) {
+                $url = "https://www.googleapis.com/admin/directory/v1/groups/$group/members"; 
+
+                if ($next) {
+                        $url = "$url&pageToken=$next";
+                }
+
+                $req = HTTP::Request->new("GET", $url);
+
+                $response = $self->request($req);
+
+                if ($response->{'nextPageToken'}) {
+                        push(@result, @{$response->{'members'}});
+                        $next = $response->{'nextPageToken'};
+                } else {
+                        push(@result, @{$response->{'members'}});
+                        last;
+                }
+        }
+        return @result;
+}
+
+
+
 sub interactively_acquire_refresh_token
 {
 	my $self = shift;
@@ -388,6 +492,8 @@ sub interactively_acquire_refresh_token
 	my $redirect_uri='urn:ietf:wg:oauth:2.0:oob';
 	my @scopes = qw(
 		https://www.googleapis.com/auth/admin.directory.user
+		https://www.googleapis.com/auth/admin.directory.group.member
+		https://www.googleapis.com/auth/admin.directory.group
 		);
 
 	print "This program will help you acquire a refresh token for use with\n";
