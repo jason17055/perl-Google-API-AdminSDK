@@ -8,7 +8,7 @@ use URI::Escape;
 use JSON "decode_json", "encode_json";
 use IO::Handle;
 
-our $VERSION = 0.001;
+our $VERSION = 0.1;
 
 my $TOKEN_URL = 'https://accounts.google.com/o/oauth2/token';
 
@@ -232,11 +232,21 @@ sub request_raw
 			$req->header("Authorization", "Bearer $access_token");
 			$resp = $self->http->request($req);
 			if ($resp->code == 200) {
+				# Successful 
 				last;
 			}
 		} elsif ($resp->code == 200) {
-			last;
+			last; # Successful 
+                } elsif ($resp->code == 204) {
+                        last; # Successful 
+		} elsif ($resp->code == 400) {
+			last; # Error
+		} elsif ($resp->code == 403) {
+			last; # dailyLimitExceeded, userRateLimitExceeded, quotaExceeded 
+		} elsif ($resp->code == 404) {
+			last; # Not found
 		} else {
+			# Failure, retry after sleep
 			$tries++;
 			my $sleep = $wait + rand();
 			select(undef,undef,undef,$sleep);
@@ -252,10 +262,22 @@ sub _parse_response
 	my ($resp) = @_;
 
 	$resp->is_success
-		or die "Error: ".$resp->status_line."\n";
+		or die "Error: ".$resp->status_line." - "._parse_error_content($resp->content)."\n";
 	my $resp_obj = decode_json($resp->content);
 
 	return $resp_obj;
+}
+
+sub _parse_error_content
+{
+	my ($content) = @_;
+
+	eval {
+		my $message = decode_json($content); 
+		return $message->{'error'}->{'message'};
+	} or do {
+		return $content;
+	}
 }
 
 =head2 delete_user()
@@ -307,6 +329,58 @@ sub get_user
 	}
 
 	return _parse_response($resp);
+}
+
+=head2 get_user_aliases()
+
+ my @user_aliases = $google->get_user_aliases('joe@example.com')
+       or die "User not found\n";
+=cut
+
+sub get_user_aliases
+{
+        my $self = shift;
+        my ($user_key) = @_;
+
+        my $url = 'https://www.googleapis.com/admin/directory/v1/users/'.uri_escape($user_key).'/aliases';
+        my $req = HTTP::Request->new("GET", $url);
+        my $resp = $self->request_raw($req);
+        if ($resp->code == 404) {
+                # user not found
+                return;
+        }
+
+	my $result = _parse_response($resp);
+        my @aliases;
+	foreach my $record (@{$result->{'aliases'}}) {
+		push (@aliases, $record->{'alias'});
+	}
+
+	return @aliases;
+}
+
+=head2 insert_alias()
+
+ $google->insert_alias('joe@example.com', 'alias@example.com');
+
+=cut
+
+sub insert_alias
+{
+        my $self = shift;
+        my ($user_key, $alias) = @_;
+	my $user_obj;
+
+	$user_obj->{alias} = $alias;
+
+        my $url = 'https://www.googleapis.com/admin/directory/v1/users/'.uri_escape($user_key).'/aliases';
+        my $req = HTTP::Request->new('POST', $url);
+        my $content = encode_json($user_obj);
+        $req->header('Content-Type', 'application/json');
+        $req->content($content);
+
+        return $self->request($req);
+
 }
 
 =head2 insert_user()
@@ -439,6 +513,135 @@ sub patch_user
 	return $self->request($req);
 }
 
+=head2 patch_group()
+
+ $google->patch_group('group@example.com', $group);
+
+=over
+
+=item $group->{name} the group's name.
+
+=item $group->{email} the group's email address
+
+=item $group->{description} Extended description, Max 4096 chars.
+
+=back
+
+=cut
+
+sub patch_group
+{
+        my $self = shift;
+        my ($group_key, $group_obj) = @_;
+
+        my $url = 'https://www.googleapis.com/admin/directory/v1/groups/'.uri_escape($group_key);
+        my $req = HTTP::Request->new('PATCH', $url);
+        my $content = encode_json($group_obj);
+        $req->header('Content-Type', 'application/json');
+        $req->content($content);
+
+        return $self->request($req);
+}
+
+
+=head2 suspend_user()
+
+ $google_suspend_user('joe@example.com');
+
+=cut
+
+sub suspend_user
+{
+        my $self = shift;
+        my ($user_key) = @_;
+	my $user_obj;
+
+	$user_obj->{suspended} = 'true';
+
+	return $self->patch_user($user_key, $user_obj);
+}
+
+=head2 unsuspend_user()
+
+ $google_unsuspend_user('joe@example.com');
+
+=cut
+
+sub unsuspend_user
+{
+        my $self = shift;
+        my ($user_key) = @_;
+        my $user_obj;
+
+        $user_obj->{suspended} = 'false';
+
+        return $self->patch_user($user_key, $user_obj);
+}
+
+=head2 list_groups()
+
+ my @groups = $google->list_groups('example.com');
+ foreach my $group (@groups) {
+     # do something with $group 
+ }
+
+=cut
+
+sub list_groups
+{
+        my $self   = shift;
+        my $domain = $_[0];
+        my @result;
+        my $url;
+        my $req;
+        my $response;
+
+        my $next;
+        while (1) {
+                $url = 'https://www.googleapis.com/admin/directory/v1/groups?domain='.uri_escape($domain);
+
+                if ($next) {
+                        $url = "$url&pageToken=$next";
+                }
+
+                $req = HTTP::Request->new("GET", $url);
+
+                $response = $self->request($req);
+
+                if ($response->{'nextPageToken'}) {
+                        push(@result, @{$response->{'groups'}});
+                        $next = $response->{'nextPageToken'};
+                } else {
+                        push(@result, @{$response->{'groups'}});
+                        last;
+                }
+        }
+        return @result;
+}
+
+=head2 list_groups_hash
+
+ my %group_data = $google_sdk->list_groups_hash('example.com');
+ foreach my $uid (keys %user_data) {
+    print "($uid) $user_data{$uid}->{'id'} - $user_data{$uid}->{'suspended'}\n";
+ }
+
+=cut
+
+sub list_groups_hash
+{
+        my $self = shift;
+        my ($domain) = @_;
+        my %result;
+
+        my @groups_data = $self->list_groups(@_);
+        foreach my $group_info (@groups_data) {
+                my $group = $group_info->{'email'};
+                $result{$group} = $group_info->{'name'};
+        }
+
+        return (%result);
+}
 
 =head2 list_members()
 
@@ -452,7 +655,7 @@ sub patch_user
 sub list_members
 {
         my $self  = shift;
-        my $group = $_[0];
+        my ($group) = @_;
         my @result;
         my $url;
         my $req;
@@ -460,16 +663,15 @@ sub list_members
 
         my $next;
         while (1) {
-                $url = "https://www.googleapis.com/admin/directory/v1/groups/$group/members"; 
+                $url = 'https://www.googleapis.com/admin/directory/v1/groups/'.uri_escape($group).'/members?maxResults=200'; 
 
                 if ($next) {
                         $url = "$url&pageToken=$next";
                 }
 
                 $req = HTTP::Request->new("GET", $url);
-
                 $response = $self->request($req);
-
+	
                 if ($response->{'nextPageToken'}) {
                         push(@result, @{$response->{'members'}});
                         $next = $response->{'nextPageToken'};
@@ -481,7 +683,49 @@ sub list_members
         return @result;
 }
 
+=head2 delete_member()
 
+ $google->delete_member('joe@example.com', 'group@example.com');
+
+=cut
+
+sub delete_member
+{
+        my $self = shift;
+        my ($user_key, $group_key) = @_;
+
+        my $url = 'https://www.googleapis.com/admin/directory/v1/groups/'.uri_escape($group_key).'/members/'.uri_escape($user_key);
+        my $req = HTTP::Request->new("DELETE", $url);
+        my $resp = $self->request_raw($req);
+        $resp->is_success
+                or die "Error: ".$resp->status_line."\n";
+
+        return;
+}
+
+=head2
+
+ $google->insert_member('joe@example.com', 'group@example.com');
+
+=cut
+
+sub insert_member
+{
+        my $self = shift;
+        my ($user_key, $group_key) = @_;
+	my $user_obj;
+
+	$user_obj->{kind}  = 'admin#directory#member';
+	$user_obj->{email} = $user_key;
+
+        my $url = 'https://www.googleapis.com/admin/directory/v1/groups/'.uri_escape($group_key).'/members';
+        my $req = HTTP::Request->new('POST', $url);
+        my $content = encode_json($user_obj);
+        $req->header('Content-Type', 'application/json');
+        $req->content($content);
+
+        return $self->request($req);
+}
 
 sub interactively_acquire_refresh_token
 {
@@ -492,6 +736,7 @@ sub interactively_acquire_refresh_token
 	my $redirect_uri='urn:ietf:wg:oauth:2.0:oob';
 	my @scopes = qw(
 		https://www.googleapis.com/auth/admin.directory.user
+		https://www.googleapis.com/auth/admin.directory.user.alias
 		https://www.googleapis.com/auth/admin.directory.group.member
 		https://www.googleapis.com/auth/admin.directory.group
 		);
